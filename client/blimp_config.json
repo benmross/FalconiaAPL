@@ -1,0 +1,16 @@
+{
+    "key_bindings": {
+        "Forward": "w",
+        "Backward": "s",
+        "Left": "a",
+        "Right": "d",
+        "Spectral": "e",
+        "Humiture": "q",
+        "Stop": "x"
+    },
+    "mqtt_port": 1883,
+    "camera_port": 7123,
+    "camera_refresh_rate": 10,
+    "sensor_refresh_rate": 100,
+    "ip_address": "172.20.10.2"
+}
