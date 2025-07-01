@@ -232,8 +232,9 @@ def auto_update():
     # MQTT messages are processed automatically in background thread
     # No need to call loop() since we use loop_start()
     
-    # Update visualization every 100ms
-    if current_time - last_update > 0.1:
+    # Update visualization every 50ms (more frequent)
+    if current_time - last_update > 0.05:
+        print(f"🔄 Auto-update: latest_position={latest_position}")
         update_visualization()
         last_update = current_time
         
@@ -405,8 +406,39 @@ def start_demo():
     
     demo_active = True
     print("✅ Demo ready!")
-    print("🔄 Run: while auto_update(): pass")
+    print("🔄 Run: start_live_tracking() - Uses ParaView animation")
+    print("🛑 Run: stop_live_tracking() - Stop animation")
     print("📍 Test corners: move_to_next_corner()")
+
+def start_live_tracking():
+    """Start live tracking - manual update instructions"""
+    print("🎬 Starting live tracking...")
+    print("=" * 50)
+    print("🚨 IMPORTANT: ParaView can't update during long Python loops!")
+    print()
+    print("📋 MANUAL UPDATE OPTIONS:")
+    print("1. Single update: update_visualization()")
+    print("2. Short burst: [update_visualization() for _ in range(10)]")
+    print("3. Check position: test_mqtt_simple()")
+    print("4. New position: send_test_position()")
+    print()
+    print("🔄 For continuous updates, repeatedly run:")
+    print("   update_visualization()")
+    print()
+    print("💡 TIP: Use ParaView's Animation tools for true live updates")
+    print("=" * 50)
+
+def stop_live_tracking():
+    """Stop live tracking"""
+    print("🛑 Live tracking guidance provided.")
+
+def quick_update_burst():
+    """Do a quick burst of updates"""
+    print("⚡ Quick update burst...")
+    for i in range(5):
+        update_visualization()
+        print(f"  Update {i+1}/5 - Position: {latest_position}")
+    print("✅ Burst complete!")
 
 def stop_demo():
     """Stop the demo"""
