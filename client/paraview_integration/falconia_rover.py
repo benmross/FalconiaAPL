@@ -13,6 +13,7 @@ USAGE IN PARAVIEW:
 from paraview.simple import *
 import json
 import cv2
+import numpy as np
 
 try:
     import paho.mqtt.client as mqtt
@@ -33,11 +34,127 @@ camera_capture = None
 latest_position = [0, 0, 0]
 position_history = []
 corners_data = None
+pixel_corners = None
+model_coords = None
 
 # Falconia model bounds (manually calibrated)
 MODEL_X_RANGE = 2.5  # -1.25 to +1.25
 MODEL_Z_RANGE = 3.6  # -1.8 to +1.8  
 MODEL_Y_HOVER = 0.2  # Height above surface
+
+def calculate_model_corners():
+    """Calculate the 8 corners of the 3D model from ParaView pipeline"""
+    
+    print("📐 Calculating model corners from ParaView...")
+    
+    # Get the active source (should be your 3D model)
+    active_source = GetActiveSource()
+    if not active_source:
+        print("❌ No active source found! Load your 3D model first.")
+        return None
+    
+    # Update pipeline and get data info
+    active_source.UpdatePipeline()
+    data_info = active_source.GetDataInformation()
+    bounds = data_info.GetBounds()
+    
+    # Extract bounding box: [x_min, x_max, y_min, y_max, z_min, z_max]
+    x_min, x_max = bounds[0], bounds[1]
+    y_min, y_max = bounds[2], bounds[3] 
+    z_min, z_max = bounds[4], bounds[5]
+    
+    print(f"📦 Model bounds:")
+    print(f"   X: [{x_min:.3f}, {x_max:.3f}]")
+    print(f"   Y: [{y_min:.3f}, {y_max:.3f}]") 
+    print(f"   Z: [{z_min:.3f}, {z_max:.3f}]")
+    
+    # Calculate 8 corners
+    # Using your convention: top-left = (-X, -Z), top-right = (+X, -Z), etc.
+    # Use Y coordinate of top surface for rover movement
+    hover_y = y_max * 0.95  # Slightly below top surface
+    
+    corners = {
+        # Top surface (where rover moves)
+        "top_left": [x_min, hover_y, z_min],      # Tag 0: -X, -Z  
+        "top_right": [x_max, hover_y, z_min],     # Tag 1: +X, -Z
+        "bottom_right": [x_max, hover_y, z_max],  # Tag 2: +X, +Z
+        "bottom_left": [x_min, hover_y, z_max],   # Tag 3: -X, +Z
+        
+        # Bottom surface (for reference)
+        "bottom_top_left": [x_min, y_min, z_min],
+        "bottom_top_right": [x_max, y_min, z_min], 
+        "bottom_bottom_right": [x_max, y_min, z_max],
+        "bottom_bottom_left": [x_min, y_min, z_max]
+    }
+    
+    print("🎯 Calculated corners:")
+    for name, coord in corners.items():
+        if name.startswith("top_"):
+            print(f"   {name}: [{coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}]")
+    
+    return corners
+
+def setup_coordinate_transform(model_corners):
+    """Setup coordinate transformation from camera pixels to model coordinates"""
+    global corners_data, pixel_to_model_matrix
+    
+    if not corners_data or not model_corners:
+        return False
+        
+    print("🔗 Setting up coordinate transformation...")
+    
+    # Get pixel coordinates from calibration
+    camera_corners = corners_data["corners"]
+    
+    # Map pixel corners to model corners
+    # Support both old AprilTag format and new click format
+    if "top_left" in camera_corners:
+        # New click-based format
+        pixel_points = [
+            camera_corners["top_left"]["pixel"],      # Click 1 -> top_left  
+            camera_corners["top_right"]["pixel"],     # Click 2 -> top_right
+            camera_corners["bottom_right"]["pixel"],  # Click 3 -> bottom_right
+            camera_corners["bottom_left"]["pixel"]    # Click 4 -> bottom_left
+        ]
+        print("📌 Using new click-based corner format")
+    else:
+        # Old AprilTag format (back_left, back_right, etc.)
+        pixel_points = [
+            camera_corners["back_left"]["pixel"],    # Tag 0 -> top_left  
+            camera_corners["back_right"]["pixel"],   # Tag 1 -> top_right
+            camera_corners["front_right"]["pixel"],  # Tag 2 -> bottom_right
+            camera_corners["front_left"]["pixel"]    # Tag 3 -> bottom_left
+        ]
+        print("📌 Using old AprilTag corner format")
+    
+    # For XZ plane model, we need [x, z] coordinates 
+    model_points = [
+        [model_corners["top_left"][0], model_corners["top_left"][2]],      # [x, z]
+        [model_corners["top_right"][0], model_corners["top_right"][2]],    # [x, z]
+        [model_corners["bottom_right"][0], model_corners["bottom_right"][2]], # [x, z]
+        [model_corners["bottom_left"][0], model_corners["bottom_left"][2]]     # [x, z]
+    ]
+    
+    # Calculate homography transformation
+    try:
+        import numpy as np
+        pixel_array = np.array(pixel_points, dtype=np.float32)
+        model_array = np.array(model_points, dtype=np.float32)
+        
+        # Store for use in transformation
+        global pixel_corners, model_coords
+        pixel_corners = pixel_array
+        model_coords = model_array
+        
+        print("✅ Coordinate transformation ready")
+        print(f"   Pixel corners: {pixel_array.shape}")
+        print(f"   Model corners: {model_array.shape}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Failed to setup transformation: {e}")
+        return False
 
 def setup_rover_tracking():
     """Initialize rover tracking system"""
@@ -50,7 +167,7 @@ def setup_rover_tracking():
     import os
     script_dir = "/home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration"
     corner_paths = [
-        'falconia_corners.json',  # Current directory
+        '/home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration/falconia_corners.json',  # Current directory
         os.path.join(script_dir, 'falconia_corners.json'),  # Script directory
         os.path.expanduser('~/falconia_corners.json')  # Home directory
     ]
@@ -73,6 +190,15 @@ def setup_rover_tracking():
             print(f"     {path}")
         print("   Run: python calibrate_corners.py")
         return False
+    
+    # Calculate model corners from ParaView bounding box
+    model_corners = calculate_model_corners()
+    if not model_corners:
+        print("❌ Failed to calculate model corners")
+        return False
+    
+    # Create coordinate transformation
+    setup_coordinate_transform(model_corners)
     
     # Create rover visualization
     create_rover_sphere()
@@ -237,38 +363,44 @@ def get_camera_position():
     return None
 
 def pixel_to_model_coords(pixel_x, pixel_y):
-    """Convert pixel coordinates to model coordinates using corner calibration"""
-    if not corners_data:
-        return [0, MODEL_Y_HOVER, 0]
+    """Convert pixel coordinates to model coordinates using homography transformation"""
+    global pixel_corners, model_coords
     
-    corners = corners_data["corners"]
-    
-    # Get corner pixel positions
-    back_left = corners["back_left"]["pixel"]
-    back_right = corners["back_right"]["pixel"] 
-    front_right = corners["front_right"]["pixel"]
-    front_left = corners["front_left"]["pixel"]
-    
-    # Simple bilinear interpolation
-    # Normalize pixel position within the quadrilateral
-    # This is a simplified version - for production use homography
-    
-    # For now, use a simple bounding box approach
-    min_x = min(back_left[0], front_left[0])
-    max_x = max(back_right[0], front_right[0])
-    min_y = min(back_left[1], back_right[1])
-    max_y = max(front_left[1], front_right[1])
-    
-    # Normalize to 0-1
-    norm_x = (pixel_x - min_x) / (max_x - min_x) if max_x > min_x else 0.5
-    norm_y = (pixel_y - min_y) / (max_y - min_y) if max_y > min_y else 0.5
-    
-    # Map to model coordinates  
-    model_x = (norm_x - 0.5) * MODEL_X_RANGE
-    model_z = (norm_y - 0.5) * MODEL_Z_RANGE
-    model_y = MODEL_Y_HOVER
-    
-    return [model_x, model_y, model_z]
+    try:
+        import numpy as np
+        import cv2
+        
+        # Check if transformation is set up
+        if 'pixel_corners' not in globals() or 'model_coords' not in globals():
+            print("❌ Coordinate transformation not set up")
+            return [0, 0, 0]
+        
+        # Calculate homography matrix
+        homography_matrix = cv2.getPerspectiveTransform(pixel_corners, model_coords)
+        
+        # Transform the pixel point
+        pixel_point = np.array([[[pixel_x, pixel_y]]], dtype=np.float32)
+        model_point = cv2.perspectiveTransform(pixel_point, homography_matrix)
+        
+        # Extract coordinates - homography gives us [x, z] for XZ plane
+        model_x = float(model_point[0][0][0])  # X coordinate
+        model_z = float(model_point[0][0][1])  # Z coordinate (from homography Y)
+        
+        # Get Y coordinate from model bounds (hover height)
+        active_source = GetActiveSource()
+        if active_source:
+            data_info = active_source.GetDataInformation()
+            bounds = data_info.GetBounds()
+            model_y = bounds[3] * 0.95  # 95% of max Y (height above XZ plane)
+        else:
+            model_y = 0.2  # Default hover height
+        
+        print(f"🔧 Homography result: pixel({pixel_x:.1f}, {pixel_y:.1f}) → model({model_x:.3f}, {model_y:.3f}, {model_z:.3f})")
+        return [model_x, model_y, model_z]
+        
+    except Exception as e:
+        print(f"❌ Transformation error: {e}")
+        return [0, 0, 0]
 
 def update_position():
     """Update rover position - call this repeatedly"""

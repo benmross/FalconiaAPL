@@ -1,91 +1,109 @@
 #!/usr/bin/env python3
 """
-Falconia AprilTag Corner Calibration
-Place AprilTags 0-3 on the corners of your Falconia model and run this script.
+Falconia Manual Corner Calibration
+Click on the 4 corners of your Falconia model in the camera stream.
 """
 
 import cv2
 import json
 import numpy as np
-from pupil_apriltags import Detector
+
+# Global variables for mouse callback
+corners = {}
+current_corner = 0
+corner_names = ["top_left", "top_right", "bottom_right", "bottom_left"]
+corner_labels = ["Top-Left", "Top-Right", "Bottom-Right", "Bottom-Left"]
+frame_for_click = None
+
+def mouse_callback(event, x, y, flags, param):
+    """Handle mouse clicks to capture corner positions"""
+    global corners, current_corner, frame_for_click
+    
+    if event == cv2.EVENT_LBUTTONDOWN and current_corner < 4:
+        corner_name = corner_names[current_corner]
+        corners[corner_name] = {"pixel": [float(x), float(y)]}
+        
+        print(f"✅ {corner_labels[current_corner]}: ({x}, {y})")
+        
+        # Draw the clicked point on the frame
+        cv2.circle(frame_for_click, (x, y), 8, (0, 255, 0), -1)
+        cv2.putText(frame_for_click, f"{current_corner + 1}", (x + 15, y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        current_corner += 1
 
 def calibrate_falconia_corners(camera_url="http://192.168.0.11:7123/stream.mjpg"):
-    """Calibrate the 4 corners of Falconia using AprilTags 0-3"""
+    """Calibrate the 4 corners of Falconia by clicking on camera stream"""
+    global corners, current_corner, frame_for_click
     
-    print("🎯 Falconia Corner Calibration")
-    print("=" * 40)
-    print("📍 Place AprilTags on corners:")
-    print("  Tag 0: Back-Left corner")
-    print("  Tag 1: Back-Right corner") 
-    print("  Tag 2: Front-Right corner")
-    print("  Tag 3: Front-Left corner")
+    print("🎯 Falconia Manual Corner Calibration")
+    print("=" * 50)
+    print("📍 Click on these corners in order:")
+    print("  1. Top-Left corner (where tag 0 would be)")
+    print("  2. Top-Right corner (where tag 1 would be)")
+    print("  3. Bottom-Right corner (where tag 2 would be)")
+    print("  4. Bottom-Left corner (where tag 3 would be)")
+    print()
     print(f"📹 Camera: {camera_url}")
-    print("🔍 Press SPACE to capture, ESC to quit")
+    print("🖱️  Left-click to mark corners")
+    print("⌨️  Press ESC to quit, SPACE to restart")
     print()
 
-    # Initialize detector
-    detector = Detector(families='tag36h11')
-    
     # Open camera
     cap = cv2.VideoCapture(camera_url)
     if not cap.isOpened():
         print(f"❌ Failed to open camera: {camera_url}")
         return None
     
-    corners = {}
-    target_tags = [0, 1, 2, 3]
+    # Setup window and mouse callback
+    window_name = 'Falconia Corner Calibration - Click Corners'
+    cv2.namedWindow(window_name)
+    cv2.setMouseCallback(window_name, mouse_callback)
     
-    while len(corners) < 4:
+    # Reset state
+    corners = {}
+    current_corner = 0
+    
+    while current_corner < 4:
         ret, frame = cap.read()
         if not ret:
+            print("❌ Failed to capture frame")
             continue
             
-        # Convert to grayscale for detection
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_for_click = frame.copy()
         
-        # Detect AprilTags
-        detections = detector.detect(gray)
+        # Draw instructions and progress
+        instruction = f"Click on: {corner_labels[current_corner]} ({current_corner + 1}/4)"
+        cv2.putText(frame_for_click, instruction, (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         
-        # Draw detections and check for target tags
-        display_frame = frame.copy()
-        found_tags = []
+        # Draw already captured corners
+        for i, (name, data) in enumerate(corners.items()):
+            x, y = int(data["pixel"][0]), int(data["pixel"][1])
+            cv2.circle(frame_for_click, (x, y), 8, (0, 255, 0), -1)
+            cv2.putText(frame_for_click, f"{i + 1}", (x + 15, y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         
-        for detection in detections:
-            tag_id = detection.tag_id
-            center = detection.center
-            
-            # Draw tag
-            cv2.circle(display_frame, (int(center[0]), int(center[1])), 5, (0, 255, 0), -1)
-            cv2.putText(display_frame, f"Tag {tag_id}", 
-                       (int(center[0]) + 10, int(center[1])), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            
-            # Check if this is a corner tag
-            if tag_id in target_tags:
-                found_tags.append(tag_id)
-                if tag_id not in corners:
-                    cv2.circle(display_frame, (int(center[0]), int(center[1])), 10, (0, 0, 255), 3)
+        # Show corner order guide
+        guide_y = 60
+        for i, label in enumerate(corner_labels):
+            color = (0, 255, 0) if i < current_corner else (255, 255, 255)
+            status = "✓" if i < current_corner else f"{i + 1}."
+            cv2.putText(frame_for_click, f"{status} {label}", (10, guide_y + i * 25), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         
-        # Show status
-        status_text = f"Found corners: {list(corners.keys())} | Current frame: {found_tags}"
-        cv2.putText(display_frame, status_text, (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        cv2.imshow('Falconia Corner Calibration', display_frame)
+        cv2.imshow(window_name, frame_for_click)
         
         key = cv2.waitKey(1) & 0xFF
         if key == 27:  # ESC
-            break
-        elif key == 32:  # SPACE
-            # Capture current detections
-            for detection in detections:
-                tag_id = detection.tag_id
-                if tag_id in target_tags and tag_id not in corners:
-                    corners[tag_id] = {
-                        "pixel": [float(detection.center[0]), float(detection.center[1])],
-                        "tag_id": int(tag_id)
-                    }
-                    print(f"✅ Captured Tag {tag_id}: {corners[tag_id]['pixel']}")
+            print("❌ Calibration cancelled")
+            cap.release()
+            cv2.destroyAllWindows()
+            return None
+        elif key == 32:  # SPACE - restart
+            print("🔄 Restarting calibration...")
+            corners = {}
+            current_corner = 0
     
     cap.release()
     cv2.destroyAllWindows()

@@ -10,11 +10,7 @@ pip install opencv-python pupil-apriltags paho-mqtt
 
 ## Step 1: Calibrate Corners
 
-Place AprilTags 0-3 on the corners of your physical Falconia model:
-- **Tag 0**: Back-Left corner
-- **Tag 1**: Back-Right corner  
-- **Tag 2**: Front-Right corner
-- **Tag 3**: Front-Left corner
+Click on the 4 corners of your physical Falconia model in the camera stream:
 
 Run calibration:
 ```bash
@@ -22,7 +18,13 @@ cd /home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration
 python calibrate_corners.py [camera_url]
 ```
 
-Press SPACE to capture each tag, ESC when done. Creates `falconia_corners.json`.
+Click on corners in this order:
+1. **Top-Left** corner (-X, -Z in ParaView)
+2. **Top-Right** corner (+X, -Z in ParaView)  
+3. **Bottom-Right** corner (+X, +Z in ParaView)
+4. **Bottom-Left** corner (-X, +Z in ParaView)
+
+Creates `falconia_corners.json` automatically when all 4 corners are clicked.
 
 ## Step 2: Open ParaView
 
@@ -69,7 +71,8 @@ cleanup()
 ## Usage Tips
 
 - **Camera URL**: Default is `http://192.168.1.100:7123/stream.mjpg`
-- **Rover Tag**: Uses AprilTag ID 4 for rover detection
+- **Rover Tag**: Uses AprilTag ID 4 for rover detection  
+- **Corner Calibration**: Manual clicking (no AprilTags needed for corners)
 - **Model Bounds**: Calibrated to X=±1.25, Z=±1.8, Y=0.2 hover height
 - **Update Frequency**: Call `update_position()` as often as needed
 - **No Loops**: ParaView can't update during long Python loops, so use manual calls
