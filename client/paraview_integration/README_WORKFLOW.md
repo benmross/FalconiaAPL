@@ -1,6 +1,6 @@
-# Falconia Rover Tracking Workflow
+# Falconia High-Performance Rover Tracking
 
-Simple 4-step workflow to track rover movement over your 3D Falconia model.
+Fast background service + ParaView workflow for real-time rover tracking over 3D Falconia model.
 
 ## Prerequisites
 
@@ -32,40 +32,50 @@ Creates `falconia_corners.json` automatically when all 4 corners are clicked.
 2. Load your Falconia 3D model (STL/OBJ file)
 3. Apply clips if needed (should see Clip1-Clip6 in pipeline)
 
-## Step 3: Load Rover Tracking
+## Step 3: Start Background Service
+
+Start the rover tracking service (runs continuously):
+```bash
+./start_rover_service.sh
+```
+
+This service:
+- Detects AprilTag 4 at 20Hz
+- Transforms coordinates automatically  
+- Publishes to MQTT `rover/position`
+
+## Step 4: Fast ParaView Tracking
 
 In ParaView's Python shell:
 ```python
-exec(open('/home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration/falconia_rover.py').read())
-setup_rover_tracking()
+exec(open('falconia_rover_fast.py').read())
+setup_fast_tracking()
 ```
 
-## Step 4: Track Rover
+## Step 5: Update Rover (Super Fast!)
 
-Place AprilTag 4 on your rover, then repeatedly run:
 ```python
-update_position()
+update_position()  # Instant updates from MQTT!
 ```
 
 ### Manual Control
 ```python
-# Test camera detection
-test_camera()
+# Check connection status
+show_status()
 
-# Set specific position
+# Set specific position  
 set_rover_position(0.5, 0.2, 1.0)
-
-# Test corners
-test_corners()
 
 # Cleanup when done
 cleanup()
 ```
 
-## Files Created
+## Files in Clean Workflow
 
-- `calibrate_corners.py` - Corner calibration script
-- `falconia_rover.py` - ParaView rover tracking script  
+- `calibrate_corners.py` - Click-based corner calibration
+- `rover_tracker_service.py` - Background AprilTag detection service
+- `falconia_rover_fast.py` - Fast ParaView MQTT-only script
+- `start_rover_service.sh` - Service startup script
 - `falconia_corners.json` - Corner calibration data (auto-generated)
 
 ## Usage Tips
