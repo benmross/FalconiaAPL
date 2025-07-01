@@ -1,0 +1,39 @@
+{
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic": "rover/position",
+  "paraview_file": null,
+  "rover_marker": {
+    "size": 0.05,
+    "color": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "opacity": 1.0,
+    "shape": "sphere"
+  },
+  "trail": {
+    "enabled": true,
+    "max_points": 100,
+    "color": [
+      1.0,
+      0.5,
+      0.0
+    ],
+    "opacity": 0.7,
+    "line_width": 2.0
+  },
+  "update_rate": 30,
+  "position_timeout": 5.0,
+  "coordinate_offset": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "coordinate_scale": [
+    1.0,
+    1.0,
+    1.0
+  ]
+}

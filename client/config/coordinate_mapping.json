@@ -1,0 +1,10 @@
+{
+  "homography_matrix": null,
+  "camera_matrix": null,
+  "dist_coeffs": null,
+  "reference_points": [],
+  "world_points": [],
+  "calibrated": false,
+  "rms_error": null,
+  "calibration_notes": "This file will be populated during coordinate calibration. Use calibration_tools.py to perform calibration."
+}

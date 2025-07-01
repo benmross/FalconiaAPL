@@ -1,0 +1,27 @@
+{
+  "camera_url": "http://192.168.1.100:7123/stream.mjpg",
+  "camera_index": 0,
+  "use_camera_index": false,
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic": "rover/position",
+  "target_tag_id": null,
+  "ceiling_height": 2.5,
+  "camera_params": {
+    "fx": 640.0,
+    "fy": 640.0,
+    "cx": 320.0,
+    "cy": 240.0
+  },
+  "tag_size": 0.15,
+  "detection_rate": 30,
+  "position_filter_alpha": 0.3,
+  "coordinate_transform": {
+    "enabled": true,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "offset_x": 0.0,
+    "offset_y": 0.0,
+    "rotation": 0.0
+  }
+}
