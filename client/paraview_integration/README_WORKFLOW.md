@@ -40,13 +40,16 @@ setup_rover_tracking()
 
 ## Step 4: Track Rover
 
-Place AprilTag 42 on your rover, then repeatedly run:
+Place AprilTag 4 on your rover, then repeatedly run:
 ```python
 update_position()
 ```
 
 ### Manual Control
 ```python
+# Test camera detection
+test_camera()
+
 # Set specific position
 set_rover_position(0.5, 0.2, 1.0)
 
@@ -66,7 +69,7 @@ cleanup()
 ## Usage Tips
 
 - **Camera URL**: Default is `http://192.168.1.100:7123/stream.mjpg`
-- **Rover Tag**: Uses AprilTag ID 42 for rover detection
+- **Rover Tag**: Uses AprilTag ID 4 for rover detection
 - **Model Bounds**: Calibrated to X=±1.25, Z=±1.8, Y=0.2 hover height
 - **Update Frequency**: Call `update_position()` as often as needed
 - **No Loops**: ParaView can't update during long Python loops, so use manual calls

@@ -9,7 +9,7 @@ import json
 import numpy as np
 from pupil_apriltags import Detector
 
-def calibrate_falconia_corners(camera_url="http://192.168.1.100:7123/stream.mjpg"):
+def calibrate_falconia_corners(camera_url="http://192.168.0.11:7123/stream.mjpg"):
     """Calibrate the 4 corners of Falconia using AprilTags 0-3"""
     
     print("🎯 Falconia Corner Calibration")
@@ -103,12 +103,25 @@ def calibrate_falconia_corners(camera_url="http://192.168.1.100:7123/stream.mjpg
             }
         }
         
-        with open('falconia_corners.json', 'w') as f:
-            json.dump(corner_data, f, indent=2)
+        # Save to multiple locations for easier access
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        save_paths = [
+            'falconia_corners.json',  # Current directory
+            os.path.join(script_dir, 'falconia_corners.json'),  # Script directory
+            os.path.expanduser('~/falconia_corners.json')  # Home directory
+        ]
+        
+        for path in save_paths:
+            try:
+                with open(path, 'w') as f:
+                    json.dump(corner_data, f, indent=2)
+                print(f"📁 Saved to: {path}")
+            except:
+                pass
         
         print()
         print("✅ Calibration Complete!")
-        print("📁 Saved to: falconia_corners.json")
         print("🎯 Corner positions:")
         for name, data in corner_data["corners"].items():
             print(f"  {name}: {data['pixel']}")
@@ -121,5 +134,5 @@ def calibrate_falconia_corners(camera_url="http://192.168.1.100:7123/stream.mjpg
 if __name__ == "__main__":
     import sys
     
-    camera_url = sys.argv[1] if len(sys.argv) > 1 else "http://192.168.1.100:7123/stream.mjpg"
+    camera_url = sys.argv[1] if len(sys.argv) > 1 else "http://192.168.0.11:7123/stream.mjpg"
     calibrate_falconia_corners(camera_url)

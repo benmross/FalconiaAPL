@@ -12,9 +12,7 @@ USAGE IN PARAVIEW:
 
 from paraview.simple import *
 import json
-import time
 import cv2
-import numpy as np
 
 try:
     import paho.mqtt.client as mqtt
@@ -48,13 +46,31 @@ def setup_rover_tracking():
     print("🚀 Setting up Falconia Rover Tracking")
     print("=" * 45)
     
-    # Load corner calibration
-    try:
-        with open('falconia_corners.json', 'r') as f:
-            corners_data = json.load(f)
-        print("✅ Loaded corner calibration")
-    except FileNotFoundError:
+    # Load corner calibration - try multiple paths
+    import os
+    script_dir = "/home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration"
+    corner_paths = [
+        'falconia_corners.json',  # Current directory
+        os.path.join(script_dir, 'falconia_corners.json'),  # Script directory
+        os.path.expanduser('~/falconia_corners.json')  # Home directory
+    ]
+    
+    corners_data = None
+    for path in corner_paths:
+        try:
+            print(f"🔍 Checking: {path}")
+            with open(path, 'r') as f:
+                corners_data = json.load(f)
+            print(f"✅ Loaded corner calibration from: {path}")
+            break
+        except FileNotFoundError:
+            continue
+    
+    if not corners_data:
         print("❌ No corner calibration found!")
+        print("   Searched paths:")
+        for path in corner_paths:
+            print(f"     {path}")
         print("   Run: python calibrate_corners.py")
         return False
     
@@ -96,6 +112,7 @@ def update_rover_geometry(position, size):
     
     if rover_source:
         x, y, z = position
+        print(f"🔧 Updating sphere geometry to: [{x:.3f}, {y:.3f}, {z:.3f}]")
         rover_source.Script = f"""
 import vtk
 sphere = vtk.vtkSphereSource()
@@ -108,6 +125,7 @@ output = self.GetOutput()
 output.ShallowCopy(sphere.GetOutput())
 """
         rover_source.Modified()
+        rover_source.UpdatePipeline()  # This was missing!
 
 def setup_mqtt_tracking():
     """Setup MQTT for rover position updates"""
@@ -175,32 +193,47 @@ def get_camera_position():
     global camera_capture, detector, corners_data
     
     if not TRACKING_AVAILABLE or not detector or not corners_data:
+        print("⚠️ Camera tracking not available")
         return None
         
-    # Open camera if needed
-    if camera_capture is None:
-        camera_url = corners_data.get("camera_url", "http://192.168.1.100:7123/stream.mjpg")
-        camera_capture = cv2.VideoCapture(camera_url)
-        
+    # Always try to get a fresh frame - recreate camera connection each time
+    camera_url = corners_data.get("camera_url", "http://192.168.0.11:7123/stream.mjpg")
+    
+    # Release old connection if it exists
+    if camera_capture is not None:
+        camera_capture.release()
+    
+    print(f"📹 Opening fresh camera connection: {camera_url}")
+    camera_capture = cv2.VideoCapture(camera_url)
+    
     if not camera_capture.isOpened():
+        print("❌ Camera not opened")
         return None
         
-    # Capture frame
-    ret, frame = camera_capture.read()
-    if not ret:
-        return None
+    # Skip a few frames to get latest
+    for i in range(3):
+        ret, frame = camera_capture.read()
+        if not ret:
+            print(f"❌ Failed to capture frame {i+1}")
+            return None
+    
+    print(f"✅ Captured fresh frame")
         
-    # Detect rover AprilTag (assuming tag ID 42)
+    # Detect rover AprilTag (tag ID 4)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     detections = detector.detect(gray)
     
+    print(f"🔍 Found {len(detections)} AprilTags")
     for detection in detections:
-        if detection.tag_id == 42:  # Rover tag
+        print(f"   Tag {detection.tag_id} at {detection.center}")
+        if detection.tag_id == 4:  # Rover tag
             # Convert pixel position to model coordinates using corner calibration
             pixel_pos = detection.center
             model_pos = pixel_to_model_coords(pixel_pos[0], pixel_pos[1])
+            print(f"✅ Rover found! Pixel: {pixel_pos} → Model: {model_pos}")
             return model_pos
-            
+    
+    print("❌ Rover tag (ID 4) not found")        
     return None
 
 def pixel_to_model_coords(pixel_x, pixel_y):
@@ -287,6 +320,74 @@ def test_corners():
     for i, (x, y, z) in enumerate(corners):
         set_rover_position(x, y, z)
         input(f"Corner {i+1}/4: [{x}, {y}, {z}] - Press Enter for next...")
+
+def test_camera():
+    """Test camera detection without updating position"""
+    global camera_capture, detector, corners_data
+    
+    if not TRACKING_AVAILABLE:
+        print("❌ Camera tracking not available - install pupil-apriltags and opencv-python")
+        return
+        
+    if not corners_data:
+        print("❌ No corner calibration - run setup_rover_tracking() first")
+        return
+        
+    if detector is None:
+        detector = Detector(families='tag36h11')
+        print("✅ Detector initialized")
+        
+    print("🧪 Testing camera detection...")
+    print("   Looking for AprilTag ID 4 (rover)")
+    print("   Camera will capture one frame and show results")
+    
+    # Get position without updating rover
+    pos = get_camera_position()
+    
+    if pos:
+        print(f"🎯 Detected rover at: [{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}]")
+        print("   ✅ Camera detection working!")
+    else:
+        print("❌ No rover detected")
+        print("   Check:")
+        print("   1. AprilTag ID 4 is visible to camera")
+        print("   2. Camera URL is correct")
+        print("   3. Lighting is adequate")
+        print("   4. Tag is not occluded")
+
+def update_position_now():
+    """Detect rover and immediately update position with full debugging"""
+    global latest_position, detector
+    
+    print("🔄 Updating rover position...")
+    
+    # Ensure detector is initialized
+    if detector is None:
+        detector = Detector(families='tag36h11')
+        print("✅ Detector initialized")
+    
+    # Get current camera position
+    camera_pos = get_camera_position()
+    
+    if camera_pos:
+        print(f"📍 New position detected: [{camera_pos[0]:.3f}, {camera_pos[1]:.3f}, {camera_pos[2]:.3f}]")
+        latest_position = camera_pos
+        
+        # Update visualization immediately
+        rover_size = MODEL_X_RANGE * 0.02
+        update_rover_geometry(latest_position, rover_size)
+        
+        # Force render
+        view = GetActiveView()
+        if view:
+            view.StillRender()
+        else:
+            Render()
+            
+        print(f"✅ Rover updated to: [{latest_position[0]:.3f}, {latest_position[1]:.3f}, {latest_position[2]:.3f}]")
+    else:
+        print("❌ No rover position detected - rover sphere stays at current position")
+        print(f"   Current position: [{latest_position[0]:.3f}, {latest_position[1]:.3f}, {latest_position[2]:.3f}]")
 
 def cleanup():
     """Clean up resources"""
