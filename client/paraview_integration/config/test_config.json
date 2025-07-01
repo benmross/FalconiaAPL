@@ -1,0 +1,18 @@
+{
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic": "rover/position",
+  "update_rate": 10,
+  "movement_pattern": "random",
+  "movement_speed": 0.1,
+  "workspace": {
+    "x_min": 0.0,
+    "x_max": 2.0,
+    "y_min": 0.0,
+    "y_max": 1.5,
+    "z_min": 0.05,
+    "z_max": 0.15
+  },
+  "noise_level": 0.01,
+  "tag_id": 42
+}

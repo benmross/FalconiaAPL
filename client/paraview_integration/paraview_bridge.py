@@ -117,7 +117,7 @@ class ParaViewBridge:
             print(f"Failed to connect to MQTT broker: {e}")
             return False
             
-    def on_mqtt_connect(self, client, userdata, flags, rc):
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
         """MQTT connection callback"""
         if rc == 0:
             print(f"Connected to MQTT broker at {self.config['mqtt_broker']}")

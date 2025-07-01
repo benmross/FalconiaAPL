@@ -93,7 +93,7 @@ class CeilingTracker:
             print("MQTT not available, position data will only be printed to console")
             return
             
-        self.mqtt_client = mqtt.Client()
+        self.mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.mqtt_client.on_connect = self.on_mqtt_connect
         self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
         
@@ -108,7 +108,7 @@ class CeilingTracker:
             print(f"Failed to connect to MQTT broker: {e}")
             self.mqtt_client = None
             
-    def on_mqtt_connect(self, client, userdata, flags, rc):
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
         """MQTT connection callback"""
         if rc == 0:
             print(f"Connected to MQTT broker at {self.config['mqtt_broker']}")
