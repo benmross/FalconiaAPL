@@ -1,4 +1,5 @@
 connect to wifi
+calibrate corners
 run ./start_rover_service.sh
 open paraview
 load exec(open('/home/benmross/Documents/Projects/FalconiaAPL/client/paraview_integration/falconia_rover_fast.py').read())
