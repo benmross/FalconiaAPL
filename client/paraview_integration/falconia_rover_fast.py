@@ -89,6 +89,8 @@ def update_rover_geometry(position, size):
     
     if rover_source:
         x, y, z = position
+        print(f"🔧 Updating sphere: pos=[{x:.3f}, {y:.3f}, {z:.3f}], size={size:.3f}")
+        
         rover_source.Script = f"""
 import vtk
 sphere = vtk.vtkSphereSource()
@@ -99,9 +101,13 @@ sphere.SetThetaResolution(20)
 sphere.Update()
 output = self.GetOutput()
 output.ShallowCopy(sphere.GetOutput())
+print(f"VTK: Created sphere at [{x}, {y}, {z}] with radius {size}")
 """
         rover_source.Modified()
         rover_source.UpdatePipeline()
+        print(f"✅ Geometry updated and pipeline refreshed")
+    else:
+        print("❌ No rover_source available!")
 
 def setup_mqtt_subscription(mqtt_broker, mqtt_port):
     """Setup MQTT subscription to rover coordinates"""
@@ -167,7 +173,7 @@ def update_position():
         data_info = active_source.GetDataInformation()
         bounds = data_info.GetBounds()
         model_size = max(bounds[1] - bounds[0], bounds[5] - bounds[4])
-        rover_size = model_size * 0.02
+        rover_size = 0.05
     else:
         rover_size = 0.05
     
@@ -211,6 +217,8 @@ def set_rover_position(x, y, z):
 
 def show_status():
     """Show tracking status and statistics"""
+    global rover_source, rover_rep
+    
     print("📊 Fast Tracking Status")
     print("=" * 30)
     
@@ -227,6 +235,50 @@ def show_status():
         print(f"⏰ Last update: {age:.2f}s ago")
     else:
         print("⏰ No updates received yet")
+    
+    # Check rover visualization
+    print(f"🔴 Rover source: {'✅' if rover_source else '❌'}")
+    print(f"🎨 Rover representation: {'✅' if rover_rep else '❌'}")
+    
+    if rover_source:
+        try:
+            rover_source.UpdatePipeline()
+            data_info = rover_source.GetDataInformation()
+            bounds = data_info.GetBounds()
+            print(f"📦 Sphere bounds: X=[{bounds[0]:.3f}, {bounds[1]:.3f}], Y=[{bounds[2]:.3f}, {bounds[3]:.3f}], Z=[{bounds[4]:.3f}, {bounds[5]:.3f}]")
+        except Exception as e:
+            print(f"❌ Error getting sphere info: {e}")
+    
+    if rover_rep:
+        try:
+            visibility = rover_rep.Visibility
+            print(f"👁️ Sphere visibility: {visibility}")
+        except Exception as e:
+            print(f"❌ Error getting visibility: {e}")
+
+def force_sphere_visible():
+    """Force the sphere to be visible and rendered"""
+    global rover_source, rover_rep
+    
+    if rover_rep:
+        rover_rep.Visibility = 1
+        print("👁️ Set sphere visibility = 1")
+    
+    if rover_source:
+        rover_source.Modified()
+        rover_source.UpdatePipeline()
+        print("🔄 Forced pipeline update")
+    
+    # Force full render
+    view = GetActiveView()
+    if view:
+        view.StillRender()
+        print("🖼️ Forced view render")
+    else:
+        Render()
+        print("🖼️ Forced global render")
+    
+    print("✅ Forced sphere visibility update")
 
 def cleanup():
     """Clean up MQTT connection"""

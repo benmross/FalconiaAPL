@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Falconia Rover Tracking Background Service
-Continuously detects AprilTag 4, transforms coordinates, and publishes to MQTT.
+Continuously detects AprilTag, transforms coordinates, and publishes to MQTT.
 """
 
 import cv2
@@ -13,12 +13,16 @@ import argparse
 from pupil_apriltags import Detector
 import paho.mqtt.client as mqtt
 
+# Configuration
+APRILTAG_ID = 1  # AprilTag ID to track (easily configurable)
+
 class RoverTrackerService:
-    def __init__(self, config_file="falconia_corners.json", camera_url=None, mqtt_broker="localhost", mqtt_port=1883):
+    def __init__(self, config_file="falconia_corners.json", camera_url=None, mqtt_broker="localhost", mqtt_port=1883, show_display=True):
         self.config_file = config_file
         self.camera_url = camera_url
         self.mqtt_broker = mqtt_broker
         self.mqtt_port = mqtt_port
+        self.show_display = show_display
         
         # State variables
         self.corners_data = None
@@ -29,6 +33,8 @@ class RoverTrackerService:
         self.mqtt_client = None
         self.running = False
         self.last_position = None
+        self.current_frame = None
+        self.current_detections = []
         self.stats = {
             "detections": 0,
             "missed": 0,
@@ -136,6 +142,12 @@ class RoverTrackerService:
         # Initialize AprilTag detector
         self.detector = Detector(families='tag36h11')
         print("✅ Camera and detector ready")
+        
+        # Setup display window if enabled
+        if self.show_display:
+            cv2.namedWindow("Falconia Rover Tracker", cv2.WINDOW_AUTOSIZE)
+            print("📺 Display window created")
+        
         return True
     
     def setup_mqtt(self):
@@ -158,6 +170,28 @@ class RoverTrackerService:
         else:
             print(f"❌ MQTT connection failed: {rc}")
     
+    def draw_apriltag_detection(self, frame, detection):
+        """Draw AprilTag detection on frame"""
+        # Draw tag outline
+        corners = detection.corners.astype(int)
+        cv2.polylines(frame, [corners], True, (0, 255, 0), 2)
+        
+        # Draw center point
+        center = detection.center.astype(int)
+        cv2.circle(frame, tuple(center), 5, (0, 255, 0), -1)
+        
+        # Draw tag ID
+        cv2.putText(frame, f"ID: {detection.tag_id}", 
+                   (center[0] - 20, center[1] - 20),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        # If this is our target tag, highlight it differently
+        if detection.tag_id == APRILTAG_ID:
+            cv2.polylines(frame, [corners], True, (0, 0, 255), 3)
+            cv2.putText(frame, "TRACKING", 
+                       (center[0] - 35, center[1] + 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    
     def detect_rover_position(self):
         """Detect rover AprilTag and return model coordinates"""
         try:
@@ -166,13 +200,17 @@ class RoverTrackerService:
             if not ret:
                 return None
             
+            # Store frame for display
+            self.current_frame = frame.copy()
+            
             # Detect AprilTags
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             detections = self.detector.detect(gray)
+            self.current_detections = detections
             
-            # Look for rover tag (ID 4)
+            # Look for target tag
             for detection in detections:
-                if detection.tag_id == 4:
+                if detection.tag_id == APRILTAG_ID:
                     pixel_pos = detection.center
                     model_pos = self.pixel_to_model_coords(pixel_pos[0], pixel_pos[1])
                     
@@ -187,12 +225,50 @@ class RoverTrackerService:
             print(f"❌ Detection error: {e}")
             return None
     
+    def update_display(self):
+        """Update the live camera display"""
+        if not self.show_display or self.current_frame is None:
+            return
+        
+        display_frame = self.current_frame.copy()
+        
+        # Draw all detected AprilTags
+        for detection in self.current_detections:
+            self.draw_apriltag_detection(display_frame, detection)
+        
+        # Draw corner calibration points if available
+        if self.pixel_corners is not None:
+            for i, corner in enumerate(self.pixel_corners):
+                cv2.circle(display_frame, tuple(corner.astype(int)), 8, (255, 0, 0), 2)
+                cv2.putText(display_frame, f"C{i+1}", 
+                           (int(corner[0]) + 10, int(corner[1]) - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        
+        # Add status information
+        status_text = [
+            f"Tracking AprilTag ID: {APRILTAG_ID}",
+            f"Detections: {self.stats['detections']} | Missed: {self.stats['missed']}",
+            f"Published: {self.stats['published']}"
+        ]
+        
+        for i, text in enumerate(status_text):
+            cv2.putText(display_frame, text, (10, 25 + i * 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+        # Show the frame
+        cv2.imshow("Falconia Rover Tracker", display_frame)
+        
+        # Handle window events (non-blocking)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q') or key == 27:  # 'q' or ESC to quit
+            self.running = False
+    
     def publish_position(self, position):
         """Publish rover position to MQTT"""
         try:
             position_data = {
                 "timestamp": time.time(),
-                "rover_id": 4,
+                "rover_id": APRILTAG_ID,
                 "position": {
                     "x": position[0],
                     "y": position[1], 
@@ -210,11 +286,14 @@ class RoverTrackerService:
     
     def tracking_loop(self):
         """Main tracking loop"""
-        print("🚀 Starting rover tracking loop...")
+        print(f"🚀 Starting rover tracking loop for AprilTag ID {APRILTAG_ID}...")
         
         while self.running:
             try:
                 position = self.detect_rover_position()
+                
+                # Update display
+                self.update_display()
                 
                 if position:
                     # Only publish if position changed significantly
@@ -249,6 +328,7 @@ class RoverTrackerService:
         """Start the tracking service"""
         print("🎯 Falconia Rover Tracking Service")
         print("=" * 40)
+        print(f"📌 Tracking AprilTag ID: {APRILTAG_ID}")
         
         # Initialize components
         if not self.load_corner_calibration():
@@ -283,6 +363,9 @@ class RoverTrackerService:
             self.mqtt_client.loop_stop()
             self.mqtt_client.disconnect()
         
+        if self.show_display:
+            cv2.destroyAllWindows()
+        
         self.print_stats()
         print("✅ Rover tracking service stopped")
 
@@ -292,6 +375,7 @@ def main():
     parser.add_argument("--camera", help="Camera URL (overrides config)")
     parser.add_argument("--mqtt-broker", default="localhost", help="MQTT broker address")
     parser.add_argument("--mqtt-port", type=int, default=1883, help="MQTT broker port")
+    parser.add_argument("--no-display", action="store_true", help="Disable live camera display")
     
     args = parser.parse_args()
     
@@ -300,7 +384,8 @@ def main():
         config_file=args.config,
         camera_url=args.camera,
         mqtt_broker=args.mqtt_broker,
-        mqtt_port=args.mqtt_port
+        mqtt_port=args.mqtt_port,
+        show_display=not args.no_display
     )
     
     service.start()

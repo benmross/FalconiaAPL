@@ -114,10 +114,10 @@ def calibrate_falconia_corners(camera_url="http://192.168.0.11:7123/stream.mjpg"
             "timestamp": cv2.getTickCount() / cv2.getTickFrequency(),
             "camera_url": camera_url,
             "corners": {
-                "back_left": corners[0],      # Tag 0
-                "back_right": corners[1],     # Tag 1  
-                "front_right": corners[2],    # Tag 2
-                "front_left": corners[3]      # Tag 3
+                "back_left": corners["top_left"],      # Tag 0
+                "back_right": corners["top_right"],     # Tag 1  
+                "front_right": corners["bottom_right"],    # Tag 2
+                "front_left": corners["bottom_left"]      # Tag 3
             }
         }
         
