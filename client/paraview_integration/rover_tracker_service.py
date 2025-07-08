@@ -79,22 +79,23 @@ class RoverTrackerService:
             ]
             print("📌 Using click-based corner format")
         else:
-            # Old AprilTag format
+            # Old AprilTag format - map to consistent ordering
+            # back_left -> top_left, back_right -> top_right, front_right -> bottom_right, front_left -> bottom_left
             pixel_points = [
-                camera_corners["back_left"]["pixel"],
-                camera_corners["back_right"]["pixel"], 
-                camera_corners["front_right"]["pixel"],
-                camera_corners["front_left"]["pixel"]
+                camera_corners["back_left"]["pixel"],    # top_left
+                camera_corners["back_right"]["pixel"],   # top_right
+                camera_corners["front_right"]["pixel"],  # bottom_right
+                camera_corners["front_left"]["pixel"]    # bottom_left
             ]
             print("📌 Using AprilTag corner format")
         
-        # Use manually calibrated model coordinates (since we don't have ParaView access)
-        # These should match your ParaView model bounds
+        # Use ParaView model bounds - corner coordinates from user
+        # Format: [x, z] (y is fixed at 0.2 for hover height)
         model_points = [
-            [-1.25, -1.8],  # top_left [x, z]
-            [1.25, -1.8],   # top_right [x, z]
-            [1.25, 1.8],    # bottom_right [x, z]  
-            [-1.25, 1.8]    # bottom_left [x, z]
+            [-0.6, -0.75],  # top_left [x, z]
+            [0.6, -0.75],   # top_right [x, z]
+            [0.6, 1.0],     # bottom_right [x, z]  
+            [-0.6, 1.0]     # bottom_left [x, z]
         ]
         
         try:
@@ -138,6 +139,10 @@ class RoverTrackerService:
         if not self.camera_capture.isOpened():
             print(f"❌ Failed to open camera: {self.camera_url}")
             return False
+        
+        # Optimize camera capture for low latency
+        self.camera_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffer
+        self.camera_capture.set(cv2.CAP_PROP_FPS, 30)  # Request higher FPS
             
         # Initialize AprilTag detector
         self.detector = Detector(families='tag36h11')
@@ -192,12 +197,24 @@ class RoverTrackerService:
                        (center[0] - 35, center[1] + 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
     
+    def get_latest_frame(self):
+        """Get the most recent frame by dropping buffered frames"""
+        # Read multiple frames to clear the buffer and get the latest one
+        frame = None
+        for _ in range(5):  # Clear buffer by reading multiple frames
+            ret, temp_frame = self.camera_capture.read()
+            if ret:
+                frame = temp_frame
+            else:
+                break
+        return frame
+    
     def detect_rover_position(self):
         """Detect rover AprilTag and return model coordinates"""
         try:
-            # Capture frame
-            ret, frame = self.camera_capture.read()
-            if not ret:
+            # Get latest frame (drop buffered frames)
+            frame = self.get_latest_frame()
+            if frame is None:
                 return None
             
             # Store frame for display
@@ -306,7 +323,7 @@ class RoverTrackerService:
                         print(f"📍 Rover: [{position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}]")
                 
                 # Control update rate
-                time.sleep(0.05)  # 20 Hz
+                time.sleep(0.1)  # 10 Hz
                 
             except KeyboardInterrupt:
                 break
